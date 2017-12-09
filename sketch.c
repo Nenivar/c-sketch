@@ -17,13 +17,13 @@ typedef enum OPCODE OPCODE;
 
 // returns the opcode for a given instruction
 OPCODE extractOpcode (unsigned char instruction) {
-    char opcode = (instruction >> 0x6) & 0x03;
-
-    return opcode;
+    return (instruction >> 0x6) & 0x03;;
 }
 
-int extractOperand (unsigned char instruction) {
-    int operand = instruction & 0x3F;
+// returns the operand (betwen -32 & 31) for a given instruction
+char extractOperand (unsigned char instruction) {
+    char operand = instruction & 0x1F;
+    if ((instruction & 0x20) == 0x20) operand -= 32;
 
     return operand;
 }
@@ -52,7 +52,11 @@ void testExtCode () {
 }
 
 void testExtAnd () {
-
+    assert (extractOperand (0x00) == 0);
+    assert (extractOperand (0x37) == -9);
+    assert (extractOperand (0xFF) == -1);
+    assert (extractOperand (0x20) == -32);
+    assert (extractOperand (0x1F) == 31);
 }
 
 void test () {

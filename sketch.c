@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -21,9 +22,27 @@ struct instructionSet {
 };
 typedef struct instructionSet instructionSet;
 
+struct state {
+    bool penDown;
+    int x, y, prevX, prevY;
+    display *disp;
+};
+typedef struct state state;
+
 /*
- *  DECODING
+ *  LOGIC
  */
+
+// returns an initalized new state for drawing
+state *newState (display *disp) {
+    state *new = malloc (sizeof (state));
+    new->penDown = false;
+    new->x = 0;
+    new->y = 0;
+    new->disp = disp;
+
+    return new;
+}
 
 // returns the opcode for a given instruction
 OPCODE extractOpcode (unsigned char instruction) {
@@ -72,18 +91,20 @@ display *setupDisplay () {
     return d;
 }
 
-void interpretInstr (unsigned char instruction) {
+void interpretInstr (state s, unsigned char instruction) {
     OPCODE opcode = extractOpcode (instruction);
     char operand = extractOperand (instruction);
 
     switch (opcode) {
         case DX:
+
             break;
         case DY:
             break;
         case DT:
             break;
         case PEN:
+            s->penDown = !s->penDown;
             break;
         default:
             printf ("Invalid instruction!\n");
@@ -137,8 +158,11 @@ void test () {
 int main (int n, char *varg[n]) {
     test ();
 
-    //display *d = setupDisplay ();
-    //key (d);
+    display *d = setupDisplay ();
+
+    state *s = newState (d);
+
+    key (d);
 
     return 1;
 }

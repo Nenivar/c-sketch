@@ -72,6 +72,25 @@ display *setupDisplay () {
     return d;
 }
 
+void interpretInstr (unsigned char instruction) {
+    OPCODE opcode = extractOpcode (instruction);
+    char operand = extractOperand (instruction);
+
+    switch (opcode) {
+        case DX:
+            break;
+        case DY:
+            break;
+        case DT:
+            break;
+        case PEN:
+            break;
+        default:
+            printf ("Invalid instruction!\n");
+            break;
+    }
+}
+
 /*
  *  TESTING
  */

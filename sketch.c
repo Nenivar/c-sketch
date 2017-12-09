@@ -85,31 +85,67 @@ instructionSet *readFile (char *loc) {
  */
 
 display *setupDisplay () {
-    display *d = newDisplay ("dog", 100, 100);
-    clear (d);
+    display *d = newDisplay ("line.sketch", 200, 200);
+    //clear (d);
 
     return d;
 }
 
-void interpretInstr (state s, unsigned char instruction) {
+void interpretInstr (state *s, unsigned char instruction) {
     OPCODE opcode = extractOpcode (instruction);
     char operand = extractOperand (instruction);
 
     switch (opcode) {
         case DX:
+            s->prevX = s->x;
+            s->x += operand;
+
+            if (s->penDown) {
+                //if (validPrev)
+                
+            if (s->penDown && operand != 0) line (s->disp, s->prevX, s->prevY,
+                                s->x, s->y);
+            }
+
+            printf ("Moved pen to x=%d; (%d, %d) -> (%d, %d)\n", s->x, s->prevX, s->prevY, s->x, s->y);
 
             break;
         case DY:
+            s->prevY = s->y;
+            s->y += operand;
+
+            if (s->penDown && operand != 0) line (s->disp, s->prevX, s->prevY,
+                                s->x, s->y);
+
+            printf ("Moved pen to y=%d; (%d, %d) -> (%d, %d)\n", s->y, s->prevX, s->prevY, s->x, s->y);
+            
             break;
         case DT:
+
             break;
         case PEN:
+            
             s->penDown = !s->penDown;
+            if (s->penDown) {
+s->prevX = s->x;
+            s->prevY = s->y;
+            }
+            
+            printf ("Changed pen status to x=%d\n", s->penDown);
             break;
         default:
             printf ("Invalid instruction!\n");
             break;
     }
+}
+
+void interpretInstrSet (state *s, instructionSet *set) {
+    for (int i = 0; i < set->n; i++){
+        interpretInstr (s, set->instructions [i]);
+        //pause (s->disp, 1000);
+    }
+    
+    free (set);
 }
 
 /*
@@ -159,10 +195,16 @@ int main (int n, char *varg[n]) {
     test ();
 
     display *d = setupDisplay ();
-
     state *s = newState (d);
 
-    key (d);
+    // oxo, diag, cross
+    instructionSet *set = readFile ("line.sketch");
+    interpretInstrSet (s, set);
+
+    //key (d);
+
+    free (d);
+    free (s);
 
     return 1;
 }

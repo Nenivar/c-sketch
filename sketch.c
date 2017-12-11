@@ -8,18 +8,20 @@
 /*
  *  STRUCTURES
  */
-
+// drawing operations
 enum OPCODE {
     DX, DY, DT, PEN
 };
 typedef enum OPCODE OPCODE;
 
+// the set of instructions to execute for a drawing
 struct instructionSet {
     int n;
     unsigned char instructions [];
 };
 typedef struct instructionSet instructionSet;
 
+// the current state of a drawing
 struct state {
     bool penDown;
     int x, y, prevX, prevY;
@@ -49,13 +51,13 @@ OPCODE extractOpcode (unsigned char instruction) {
     return (instruction >> 0x6) & 0x03;
 }
 
-// returns the operand (between -32 & 31) for a given instruction
-char extractOperand (unsigned char instruction) {
+// returns an unsigned operand (between 0 & 63) for a given instruction
+char extractUnsignedOperand (unsigned char instruction) {
     return instruction & 0x3F;
 }
 
-// returns the operand (between 0 & 63) for a dt instruction
-char extractMoveOperand (unsigned char instruction) {
+// returns a signed operand (between -32 & 31) for a given instruction
+char extractSignedOperand (unsigned char instruction) {
     return (instruction & 0x20) == 0x20 ? (instruction & 0x1F) - 32
                                      : (instruction & 0x1F);
 }
@@ -65,6 +67,7 @@ char extractMoveOperand (unsigned char instruction) {
  */
 
 // reads in a sketch file and returns a set of instructions
+// includes automatic resizing
 instructionSet *readFile (char *loc) {
     int i = 0, tempSize = 10;
     instructionSet *set = malloc (sizeof (instructionSet) + tempSize);
@@ -91,20 +94,22 @@ instructionSet *readFile (char *loc) {
  *  OUTPUT
  */
 
-// creates a new display
+// initalizes a new display
 display *setupDisplay (char *name) {
     display *d = newDisplay (name, 200, 200);
 
     return d;
 }
 
+// method for dx command
 void executeDx (state *s, char instruction) {
-    char dx = extractMoveOperand (instruction);
+    char dx = extractSignedOperand (instruction);
     s->x += dx;
 }
 
+// method for dy command
 void executeDy (state *s, unsigned char instruction) {
-    char dy = extractMoveOperand (instruction);
+    char dy = extractSignedOperand (instruction);
     s->y += dy;
 
     if (s->penDown) line (s->disp, s->prevX, s->prevY, s->x, s->y);
@@ -113,14 +118,17 @@ void executeDy (state *s, unsigned char instruction) {
     s->prevY = s->y;
 }
 
+// method for dt command
 void executeDt (state *s, char instruction) {
-    pause (s->disp, extractOperand (instruction) * 10);
+    pause (s->disp, extractUnsignedOperand (instruction) * 10);
 }
 
+// method for pen command
 void executePen (state *s) {
     s->penDown = !s->penDown;
 }
 
+// decides what method to execute based on the given instruction
 void interpretInstr (state *s, unsigned char instruction) {
     OPCODE opcode = extractOpcode (instruction);
 
@@ -146,6 +154,7 @@ void interpretInstr (state *s, unsigned char instruction) {
     }
 }
 
+// executes a set of instructions
 void interpretInstrSet (state *s, instructionSet *set) {
     for (int i = 0; i < set->n; i++){
         interpretInstr (s, set->instructions [i]);
@@ -170,16 +179,16 @@ void testExtCode () {
 }
 
 void testExtAnd () {
-    assert (extractOperand (0x00) == 0);
-    assert (extractOperand (0x37) == 55);
-    assert (extractOperand (0xFF) == 63);
-    assert (extractOperand (0x1F) == 31);
+    assert (extractUnsignedOperand (0x00) == 0);
+    assert (extractUnsignedOperand (0x37) == 55);
+    assert (extractUnsignedOperand (0xFF) == 63);
+    assert (extractUnsignedOperand (0x1F) == 31);
 
-    assert (extractMoveOperand (0x00) == 0);
-    assert (extractMoveOperand (0x37) == -9);
-    assert (extractMoveOperand (0xFF) == -1);
-    assert (extractMoveOperand (0x20) == -32);
-    assert (extractMoveOperand (0x1F) == 31);
+    assert (extractSignedOperand (0x00) == 0);
+    assert (extractSignedOperand (0x37) == -9);
+    assert (extractSignedOperand (0xFF) == -1);
+    assert (extractSignedOperand (0x20) == -32);
+    assert (extractSignedOperand (0x1F) == 31);
 }
 
 void testReadFile () {
@@ -216,8 +225,6 @@ int main (int n, char *varg[n]) {
 
         free (s);
         free (d);
-    } else {
-
     }
 
     return 1;

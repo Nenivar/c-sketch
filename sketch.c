@@ -10,7 +10,7 @@
  */
 // drawing operations
 enum OPCODE {
-    DX, DY, DT, PEN
+    DX, DY, DT, PEN, CLEAR, KEY, COL
 };
 typedef enum OPCODE OPCODE;
 
@@ -48,7 +48,20 @@ state *newState (display *disp) {
 
 // returns the opcode for a given instruction
 OPCODE extractOpcode (unsigned char instruction) {
-    return (instruction >> 0x6);
+    return (instruction >> 0x6) & 0x3;
+}
+
+// returns the number of extra operand bytes
+// for if the opcode == 3
+char extractExtraLength (unsigned char instruction) {
+    char length = (instruction >> 0x4) & 0x3;
+    return length == 3 ? 4 : length;
+}
+
+// returns the opcode
+// for if opcode == 3
+char extractExtraOpcode (unsigned char instruction) {
+    return instruction & 0x0F;
 }
 
 // returns an unsigned operand (between 0 & 63) for a given instruction
@@ -191,6 +204,21 @@ void testExtAnd () {
     assert (extractSignedOperand (0x1F) == 31);
 }
 
+void testExtExtra () {
+    assert (extractExtraLength (0xC7) == 0);
+    assert (extractExtraLength (0xD2) == 1);
+    assert (extractExtraLength (0xA3) == 2);
+    assert (extractExtraLength (0x71) == 4);
+
+    assert (extractExtraOpcode (0xA0) == DX);
+    assert (extractExtraOpcode (0x31) == DY);
+    assert (extractExtraOpcode (0xD2) == DT);
+    assert (extractExtraOpcode (0x33) == PEN);
+    assert (extractExtraOpcode (0xF4) == CLEAR);
+    assert (extractExtraOpcode (0x05) == KEY);
+    assert (extractExtraOpcode (0x16) == COL);
+}
+
 void testReadFile () {
     instructionSet *set = readFile ("line.sketch");
     assert (set->instructions [0] == 0x1e);
@@ -204,6 +232,7 @@ void testReadFile () {
 void test () {
     testExtCode ();
     testExtAnd ();
+    testExtExtra ();
     testReadFile ();
 }
 

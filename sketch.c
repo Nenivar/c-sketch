@@ -48,7 +48,7 @@ state *newState (display *disp) {
 
 // returns the opcode for a given instruction
 OPCODE extractOpcode (unsigned char instruction) {
-    return (instruction >> 0x6) & 0x03;
+    return (instruction >> 0x6);
 }
 
 // returns an unsigned operand (between 0 & 63) for a given instruction

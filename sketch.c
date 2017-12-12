@@ -47,24 +47,23 @@ state *newState (display *disp) {
 }
 
 // returns the opcode for a given instruction
+// first two bits -> opcode
+// if opcode == 3 = last 4 bits
 OPCODE extractOpcode (unsigned char instruction) {
-    return (instruction >> 0x6) & 0x3;
+    OPCODE opcode = (instruction >> 0x6) & 0x3;
+    return opcode == 3 ? instruction & 0x0F : opcode;
 }
 
 // returns the number of extra operand bytes
 // for if the opcode == 3
+// last 2 bits of first byte -> length
 char extractExtraLength (unsigned char instruction) {
     char length = (instruction >> 0x4) & 0x3;
     return length == 3 ? 4 : length;
 }
 
-// returns the opcode
-// for if opcode == 3
-char extractExtraOpcode (unsigned char instruction) {
-    return instruction & 0x0F;
-}
-
 // returns an unsigned operand (between 0 & 63) for a given instruction
+// first 8 bits = operand
 char extractUnsignedOperand (unsigned char instruction) {
     return instruction & 0x3F;
 }
@@ -187,8 +186,15 @@ void testExtCode () {
     assert (extractOpcode (0x43) == DY);
     assert (extractOpcode (0xAC) == DT);
     assert (extractOpcode (0x91) == DT);
-    assert (extractOpcode (0xDE) == PEN);
-    assert (extractOpcode (0xC6) == PEN);
+    assert (extractOpcode (0xC3) == PEN);
+    assert (extractOpcode (0xE3) == PEN);
+
+    assert (extractOpcode (0xD0) == DX);
+    assert (extractOpcode (0xF1) == DY);
+    assert (extractOpcode (0xE2) == DT);
+    assert (extractOpcode (0xF4) == CLEAR);
+    assert (extractOpcode (0xD5) == KEY);
+    assert (extractOpcode (0xE6) == COL);
 }
 
 void testExtAnd () {
@@ -205,7 +211,7 @@ void testExtAnd () {
 }
 
 void testExtExtra () {
-    assert (extractExtraLength (0xC7) == 0);
+    /*assert (extractExtraLength (0xC7) == 0);
     assert (extractExtraLength (0xD2) == 1);
     assert (extractExtraLength (0xA3) == 2);
     assert (extractExtraLength (0x71) == 4);
@@ -216,7 +222,7 @@ void testExtExtra () {
     assert (extractExtraOpcode (0x33) == PEN);
     assert (extractExtraOpcode (0xF4) == CLEAR);
     assert (extractExtraOpcode (0x05) == KEY);
-    assert (extractExtraOpcode (0x16) == COL);
+    assert (extractExtraOpcode (0x16) == COL);*/
 }
 
 void testReadFile () {

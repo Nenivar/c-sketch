@@ -74,6 +74,16 @@ char extractSignedOperand (unsigned char instruction) {
                                      : (instruction & 0x1F);
 }
 
+bool usesExtendedMode (unsigned char instruction) {
+    return (instruction >> 0x6) & 0x3;
+}
+
+long packBytes (unsigned char *bytes, int n) {
+    long out = 0;
+    for (int i = 0; i < n; i++) out += ((bytes [i] << (i * 8)));
+    return out;
+}
+
 /*
  *  INPUT
  */
@@ -141,7 +151,8 @@ void executePen (state *s) {
 }
 
 // decides what method to execute based on the given instruction
-void interpretInstr (state *s, unsigned char instruction) {
+/*void interpretInstr (state *s, unsigned char instruction) {
+    char len = extractExtraLength (instruction);
     OPCODE opcode = extractOpcode (instruction);
 
     switch (opcode) {
@@ -164,12 +175,40 @@ void interpretInstr (state *s, unsigned char instruction) {
             printf ("Invalid instruction!\n");
             break;
     }
+}*/
+
+// n = no. bytes
+// (1 == not extended)
+void interpretInstr (state *s, unsigned char *bytes, int n) {
+    unsigned char instruction = bytes [0];
+    OPCODE opcode = extractOpcode (instruction);
+    //long operand = n == 0 ? : ;
+
+    /*if (n == 0) {
+
+    } else {
+        // pack
+
+    }*/
 }
 
 // executes a set of instructions
 void interpretInstrSet (state *s, instructionSet *set) {
+    unsigned char bytes [5];
+
     for (int i = 0; i < set->n; i++){
-        interpretInstr (s, set->instructions [i]);
+        unsigned char instruction = set->instructions [i];
+        char noBytes = usesExtendedMode (instruction)
+                    ? extractExtraLength (instruction) : 1;
+
+        bytes [0] = instruction;
+
+        if (i > 1) {
+            for (int j = 1; j < noBytes && i + j < set->n; j++) bytes [j] = set->instructions [i + j];
+            i = i + noBytes - 1;
+        }
+
+        interpretInstr (s, bytes, noBytes);
     }
     
     free (set);
@@ -211,18 +250,27 @@ void testExtAnd () {
 }
 
 void testExtExtra () {
-    /*assert (extractExtraLength (0xC7) == 0);
+    assert (extractExtraLength (0xC7) == 0);
     assert (extractExtraLength (0xD2) == 1);
     assert (extractExtraLength (0xA3) == 2);
     assert (extractExtraLength (0x71) == 4);
 
-    assert (extractExtraOpcode (0xA0) == DX);
+    /*assert (extractExtraOpcode (0xA0) == DX);
     assert (extractExtraOpcode (0x31) == DY);
     assert (extractExtraOpcode (0xD2) == DT);
     assert (extractExtraOpcode (0x33) == PEN);
     assert (extractExtraOpcode (0xF4) == CLEAR);
     assert (extractExtraOpcode (0x05) == KEY);
     assert (extractExtraOpcode (0x16) == COL);*/
+}
+
+void testPack () {
+    unsigned char ex1 [] = {0x4C, 0xFF, 0x58};
+    assert (packBytes (ex1, 3) == 0x58FF4C);
+    unsigned char ex2 [] = {0xFF, 0xFF, 0xFF};
+    assert (packBytes (ex2, 3) == 0xFFFFFF);
+    unsigned char ex3 [] = {0x3};
+    assert (packBytes (ex3, 1) == 0x3);
 }
 
 void testReadFile () {
@@ -240,6 +288,7 @@ void test () {
     testExtAnd ();
     testExtExtra ();
     testReadFile ();
+    testPack ();
 }
 
 /*

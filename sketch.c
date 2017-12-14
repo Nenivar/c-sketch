@@ -124,14 +124,12 @@ display *setupDisplay (char *name) {
 }
 
 // method for dx command
-void executeDx (state *s, char instruction) {
-    char dx = extractSignedOperand (instruction);
+void executeDx (state *s, long dx) {
     s->x += dx;
 }
 
 // method for dy command
-void executeDy (state *s, unsigned char instruction) {
-    char dy = extractSignedOperand (instruction);
+void executeDy (state *s, long dy) {
     s->y += dy;
 
     if (s->penDown) line (s->disp, s->prevX, s->prevY, s->x, s->y);
@@ -141,13 +139,28 @@ void executeDy (state *s, unsigned char instruction) {
 }
 
 // method for dt command
-void executeDt (state *s, char instruction) {
-    pause (s->disp, extractUnsignedOperand (instruction) * 10);
+void executeDt (state *s, long dt) {
+    pause (s->disp, dt);
 }
 
 // method for pen command
 void executePen (state *s) {
     s->penDown = !s->penDown;
+}
+
+// method for clear command
+void executeClear (state *s) {
+    clear (s->disp);
+}
+
+// method for key command
+void executeKey (state *s) {
+    key (s->disp);
+}
+
+// method for col command
+void executeCol (state *s, int c) {
+    colour (s->disp, c);
 }
 
 // decides what method to execute based on the given instruction
@@ -179,9 +192,14 @@ void executePen (state *s) {
 
 // n = no. bytes
 // (1 == not extended)
-void interpretInstr (state *s, unsigned char *bytes, int n) {
+void interpretBytes (state *s, unsigned char *bytes, int n) {
     unsigned char instruction = bytes [0];
     OPCODE opcode = extractOpcode (instruction);
+
+    for (int i = 1; i < n; i++) {
+        printf ("%d", bytes [n]);
+    }
+
     //long operand = n == 0 ? : ;
 
     /*if (n == 0) {
@@ -190,6 +208,26 @@ void interpretInstr (state *s, unsigned char *bytes, int n) {
         // pack
 
     }*/
+    switch (opcode) {
+        case DX:
+            // signed
+            printf ("dx\n");
+            break;
+        case DY:
+            // signed
+            printf ("dy\n");
+            break;
+        case DT:
+            // unsigned * 10
+            printf ("dt\n");
+            break;
+        case PEN:
+            printf ("pen\n");
+            break;
+        default:
+            printf ("Invalid instruction!\n");
+            break;
+    }
 }
 
 // executes a set of instructions
@@ -203,12 +241,12 @@ void interpretInstrSet (state *s, instructionSet *set) {
 
         bytes [0] = instruction;
 
-        if (i > 1) {
+        if (noBytes > 1) {
             for (int j = 1; j < noBytes && i + j < set->n; j++) bytes [j] = set->instructions [i + j];
             i = i + noBytes - 1;
         }
 
-        interpretInstr (s, bytes, noBytes);
+        interpretBytes (s, bytes, noBytes);
     }
     
     free (set);
@@ -249,28 +287,11 @@ void testExtAnd () {
     assert (extractSignedOperand (0x1F) == 31);
 }
 
-void testExtExtra () {
+void testExtLen () {
     assert (extractExtraLength (0xC7) == 0);
     assert (extractExtraLength (0xD2) == 1);
     assert (extractExtraLength (0xA3) == 2);
     assert (extractExtraLength (0x71) == 4);
-
-    /*assert (extractExtraOpcode (0xA0) == DX);
-    assert (extractExtraOpcode (0x31) == DY);
-    assert (extractExtraOpcode (0xD2) == DT);
-    assert (extractExtraOpcode (0x33) == PEN);
-    assert (extractExtraOpcode (0xF4) == CLEAR);
-    assert (extractExtraOpcode (0x05) == KEY);
-    assert (extractExtraOpcode (0x16) == COL);*/
-}
-
-void testPack () {
-    unsigned char ex1 [] = {0x4C, 0xFF, 0x58};
-    assert (packBytes (ex1, 3) == 0x58FF4C);
-    unsigned char ex2 [] = {0xFF, 0xFF, 0xFF};
-    assert (packBytes (ex2, 3) == 0xFFFFFF);
-    unsigned char ex3 [] = {0x3};
-    assert (packBytes (ex3, 1) == 0x3);
 }
 
 void testReadFile () {
@@ -283,10 +304,19 @@ void testReadFile () {
     free (set);
 }
 
+void testPack () {
+    unsigned char ex1 [] = {0x4C, 0xFF, 0x58};
+    assert (packBytes (ex1, 3) == 0x58FF4C);
+    unsigned char ex2 [] = {0xFF, 0xFF, 0xFF};
+    assert (packBytes (ex2, 3) == 0xFFFFFF);
+    unsigned char ex3 [] = {0x3};
+    assert (packBytes (ex3, 1) == 0x3);
+}
+
 void test () {
     testExtCode ();
     testExtAnd ();
-    testExtExtra ();
+    testExtLen ();
     testReadFile ();
     testPack ();
 }

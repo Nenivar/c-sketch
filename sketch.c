@@ -1,3 +1,7 @@
+/*
+ *  SKETCH
+ */
+
 #include <assert.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -8,6 +12,9 @@
 /*
  *  STRUCTURES
  */
+
+const int WINDOW_DIM = 200;
+
 // drawing operations
 enum OPCODE {
     DX, DY, DT, PEN, CLEAR, KEY, COL
@@ -48,51 +55,49 @@ state *newState (display *disp) {
 
 // returns the opcode for a given instruction
 // first two bits -> opcode
-// if opcode == 3 = last 4 bits
-OPCODE extractOpcode (unsigned char instruction) {
+// if opcode == 3 -> last 4 bits
+OPCODE extrOpcode (unsigned char instruction) {
     OPCODE opcode = (instruction >> 0x6) & 0x3;
     return opcode == 3 ? instruction & 0x0F : opcode;
 }
 
-// returns the number of extra operand bytes
-// for if the opcode == 3
-// last 2 bits of first byte -> length
-char extractExtraLength (unsigned char instruction) {
-    char length = (instruction >> 0x4) & 0x3;
-    return length == 3 ? 4 : length;
-}
-
-// returns an unsigned operand (between 0 & 63) for a given instruction
+// returns an unsigned operand (between 0 & 63)
+// for a given *compact* instruction
 // last 8 bits = operand
-char extractUnsignedOperand (unsigned char instruction) {
+char extrUnOperand (unsigned char instruction) {
     return instruction & 0x3F;  
 }
 
-// returns a signed operand (between -32 & 31) for a given instruction
-char extractSignedOperand (unsigned char instruction) {
-    return (instruction & 0x20) == 0x20 ? (instruction & 0x1F) - 32
-                                     : (instruction & 0x1F);
+// (conditionally) converts an unsigned operand to signed
+// if it is applicable i.e. checks if the most sig. bit == 1
+// subtracts 2x itself if so
+long convToSigned (long operand, int bits) {
+    int c = 1 << (bits - 1);
+    return (operand & c) == c ? operand - (c * 2) : operand;
 }
 
-bool usesExtendedMode (unsigned char instruction) {
-    return ((instruction >> 0x6) & 0x3) == 3;
-}
-
-// TODO: if offset > n?
-// 0x80 << whatever
+// packs multiple bytes into one long
+// up to 4 bytes
+// n = no. bytes; offset = byte pos. to start from
 long packBytes (unsigned char *bytes, int n, int offset) {
     long out = 0;
-    //for (int i = offset; i < n; i++) out += ((bytes [i] << ((i - offset) * 8)));
     for (int i = offset; i < n; i++) out += (bytes [i] << ((n - i - 1) * 8));
     
-    //if (out & ((n - offset) * 8) == 1) out -= ((n - offset) * 8);
     return out;
 }
 
-// or long?
-int condConvertToSignedOperand (int operand, int bits) {
-    int c = 1 << (bits - 1);
-    return (operand & c) == c ? operand - (c * 2) : operand;
+// returns whether an instruction is using extended mode
+// (if the opcode (compact ver.) == 3)
+bool usesExtMode (unsigned char instruction) {
+    return ((instruction >> 0x6) & 0x3) == 3;
+}
+
+// returns the number of extra operand bytes
+// for if the opcode == 3
+// last 2 bits of first byte -> no.
+char extrExtLen (unsigned char instruction) {
+    char length = (instruction >> 0x4) & 0x3;
+    return length == 3 ? 4 : length;
 }
 
 /*
@@ -100,7 +105,7 @@ int condConvertToSignedOperand (int operand, int bits) {
  */
 
 // reads in a sketch file and returns a set of instructions
-// includes automatic resizing
+// includes automatic instruction setresizing
 instructionSet *readFile (char *loc) {
     int i = 0, tempSize = 10;
     instructionSet *set = malloc (sizeof (instructionSet) + tempSize);
@@ -129,17 +134,18 @@ instructionSet *readFile (char *loc) {
 
 // initalizes a new display
 display *setupDisplay (char *name) {
-    display *d = newDisplay (name, 200, 200);
+    display *d = newDisplay (name, WINDOW_DIM, WINDOW_DIM);
 
     return d;
 }
 
-// method for dx command
+// adds dx to x pos. of pen
 void executeDx (state *s, long dx) {
     s->x += dx;
 }
 
-// method for dy command
+// adds dy to y pos. of pen
+// also updates state & draws if needed
 void executeDy (state *s, long dy) {
     s->y += dy;
 
@@ -149,50 +155,51 @@ void executeDy (state *s, long dy) {
     s->prevY = s->y;
 }
 
-// method for dt command
+// pauses screen by dt ms
 void executeDt (state *s, long dt) {
     pause (s->disp, dt);
 }
 
-// method for pen command
+// changes pen from up->down & down->up
 void executePen (state *s) {
     s->penDown = !s->penDown;
 }
 
-// method for clear command
+// clears the display
 void executeClear (state *s) {
     clear (s->disp);
 }
 
-// method for key command
+// waits for a key input from the user
 void executeKey (state *s) {
     key (s->disp);
 }
 
-// method for col command
+// changes the colour of the pen
 void executeCol (state *s, int c) {
     colour (s->disp, c);
 }
 
+// returns the operand based on the extended
+// & dy/dx or not
 long getOperand (OPCODE opcode, unsigned char *bytes, int n) {
     long operand = 0;
     if (n == 1) {
-        operand = extractUnsignedOperand (bytes [0]);
+        operand = extrUnOperand (bytes [0]);
         if (opcode == DX || opcode == DY)
-            operand = condConvertToSignedOperand (operand, 6);
+            operand = convToSigned (operand, 6);
     } else if (n > 1) {
         operand = packBytes (bytes, n, 1);
-        operand = condConvertToSignedOperand (operand, 8 * (n - 1));        
+        operand = convToSigned (operand, 8 * (n - 1));        
     }
     return operand;
 }
 
-// n = no. bytes
-// (1 == not extended)
-// 0 = ext, but no operand
+// executes a singular instruction (w/ support for multiple operands)
+// n = no. bytes; (1 == not extended); 0 = ext, but no operand
 void interpretBytes (state *s, unsigned char *bytes, int n) {
     unsigned char instruction = bytes [0];
-    OPCODE opcode = extractOpcode (instruction);
+    OPCODE opcode = extrOpcode (instruction);
     long operand = getOperand (opcode, bytes, n);
 
     switch (opcode) {
@@ -211,26 +218,27 @@ void interpretBytes (state *s, unsigned char *bytes, int n) {
         case COL:
             executeCol (s, operand); break;
         default:
-            printf ("Invalid instruction!\n");
-            break;
+            printf ("Invalid instruction!\n"); break;
     }
 }
 
 // executes a set of instructions
+// takes each instruction and gets any extra operands
+// needed before executing it
 void interpretInstrSet (state *s, instructionSet *set) {
     unsigned char bytes [5];
 
     for (int i = 0; i < set->n; i++){
         unsigned char instruction = set->instructions [i];
-        char len = extractExtraLength (instruction);
-        char noBytes = usesExtendedMode (instruction)
+        char len = extrExtLen (instruction);
+        char noBytes = usesExtMode (instruction)
                     ? (len == 0 ? 0 : len + 1) : 1;
-                    //? extractExtraLength (instruction) : 1;
 
         bytes [0] = instruction;
 
         if (noBytes > 1) {
-            for (int j = 1; j < noBytes && i + j < set->n; j++) bytes [j] = set->instructions [i + j];
+            for (int j = 1; j < noBytes && i + j < set->n; j++)
+                        bytes [j] = set->instructions [i + j];
             i = i + noBytes - 1;
         }
 
@@ -245,41 +253,56 @@ void interpretInstrSet (state *s, instructionSet *set) {
  */
 
 void testExtCode () {
-    assert (extractOpcode (0x37) == DX);
-    assert (extractOpcode (0x03) == DX);
-    assert (extractOpcode (0x67) == DY);
-    assert (extractOpcode (0x43) == DY);
-    assert (extractOpcode (0xAC) == DT);
-    assert (extractOpcode (0x91) == DT);
-    assert (extractOpcode (0xC3) == PEN);
-    assert (extractOpcode (0xE3) == PEN);
+    assert (extrOpcode (0x37) == DX);
+    assert (extrOpcode (0x03) == DX);
+    assert (extrOpcode (0x67) == DY);
+    assert (extrOpcode (0x43) == DY);
+    assert (extrOpcode (0xAC) == DT);
+    assert (extrOpcode (0x91) == DT);
+    assert (extrOpcode (0xC3) == PEN);
+    assert (extrOpcode (0xE3) == PEN);
 
-    assert (extractOpcode (0xD0) == DX);
-    assert (extractOpcode (0xF1) == DY);
-    assert (extractOpcode (0xE2) == DT);
-    assert (extractOpcode (0xF4) == CLEAR);
-    assert (extractOpcode (0xD5) == KEY);
-    assert (extractOpcode (0xE6) == COL);
+    assert (extrOpcode (0xD0) == DX);
+    assert (extrOpcode (0xF1) == DY);
+    assert (extrOpcode (0xE2) == DT);
+    assert (extrOpcode (0xF4) == CLEAR);
+    assert (extrOpcode (0xD5) == KEY);
+    assert (extrOpcode (0xE6) == COL);
 }
 
 void testExtAnd () {
-    assert (extractUnsignedOperand (0x00) == 0);
-    assert (extractUnsignedOperand (0x37) == 55);
-    assert (extractUnsignedOperand (0xFF) == 63);
-    assert (extractUnsignedOperand (0x1F) == 31);
+    assert (extrUnOperand (0x00) == 0);
+    assert (extrUnOperand (0x37) == 55);
+    assert (extrUnOperand (0xFF) == 63);
+    assert (extrUnOperand (0x1F) == 31);
 
-    assert (extractSignedOperand (0x00) == 0);
-    assert (extractSignedOperand (0x37) == -9);
-    assert (extractSignedOperand (0xFF) == -1);
-    assert (extractSignedOperand (0x20) == -32);
-    assert (extractSignedOperand (0x1F) == 31);
+    assert (convToSigned (extrUnOperand (0x00), 6) == 0);
+    assert (convToSigned (extrUnOperand (0x37), 6) == -9);
+    assert (convToSigned (extrUnOperand (0xFF), 6) == -1);
+    assert (convToSigned (extrUnOperand (0x20), 6) == -32);
+    assert (convToSigned (extrUnOperand (0x1F), 6) == 31);
 }
 
 void testExtLen () {
-    assert (extractExtraLength (0xC7) == 0);
-    assert (extractExtraLength (0xD2) == 1);
-    assert (extractExtraLength (0xA3) == 2);
-    assert (extractExtraLength (0x71) == 4);
+    assert (extrExtLen (0xC7) == 0);
+    assert (extrExtLen (0xD2) == 1);
+    assert (extrExtLen (0xA3) == 2);
+    assert (extrExtLen (0x71) == 4);
+}
+
+void testPack () {
+    unsigned char ex1 [] = {0x4C, 0xFF, 0x58};
+    assert (packBytes (ex1, 3, 0) == 0x4CFF58);
+    unsigned char ex2 [] = {0xFF, 0xFF, 0xFF};
+    assert (packBytes (ex2, 3, 0) == 0xFFFFFF);
+    unsigned char ex3 [] = {0x3};
+    assert (packBytes (ex3, 1, 0) == 0x3);
+    unsigned char ex4 [] = {0x3F, 0x41, 0xE7};
+    assert (packBytes (ex4, 3, 1) == 0x41E7);
+    unsigned char ex5 [] = {0xCE, 0x60};
+    assert (packBytes (ex5, 2, 0) == 0xCE60);
+    assert (convToSigned (
+            packBytes (ex5, 2, 0), 16) == -12704);
 }
 
 void testReadFile () {
@@ -292,36 +315,20 @@ void testReadFile () {
     free (set);
 }
 
-void testPack () {
-    unsigned char ex1 [] = {0x4C, 0xFF, 0x58};
-    assert (packBytes (ex1, 3, 0) == 0x4CFF58);
-    unsigned char ex2 [] = {0xFF, 0xFF, 0xFF};
-    assert (packBytes (ex2, 3, 0) == 0xFFFFFF);
-    unsigned char ex3 [] = {0x3};
-    assert (packBytes (ex3, 1, 0) == 0x3);
-    unsigned char ex4 [] = {0x3F, 0x41, 0xE7};
-    assert (packBytes (ex4, 3, 1) == 0x41E7);
-
-    unsigned char ex5 [] = {0xCE, 0x60};
-    assert (packBytes (ex5, 2, 0) == 0xCE60);
-    assert (condConvertToSignedOperand (
-            packBytes (ex5, 2, 0), 16) == -12704);
-}
-
 void test () {
     testExtCode ();
     testExtAnd ();
     testExtLen ();
-    testReadFile ();
     testPack ();
+    testReadFile ();
 }
 
 /*
  *  MAIN
  */
 
+// opens a sketch file and executes it
 void testFile (char *filename) {
-    printf ("-------------\n%s\n-------------\n", filename);
     display *d = setupDisplay (filename);
     state *s = newState (d);
         
@@ -332,6 +339,8 @@ void testFile (char *filename) {
     free (d);
 }
 
+// >1 arg = test first arg. (loc of sketch file)
+// 0 = test all sketch files
 int main (int n, char *varg[n]) {
     test ();
 

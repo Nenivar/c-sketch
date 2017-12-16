@@ -78,16 +78,21 @@ bool usesExtendedMode (unsigned char instruction) {
     return ((instruction >> 0x6) & 0x3) == 3;
 }
 
-long packBytes (unsigned char *bytes, int n) {
+// TODO: if offset > n?
+// 0x80 << whatever
+long packBytes (unsigned char *bytes, int n, int offset) {
     long out = 0;
-    for (int i = 0; i < n; i++) out += ((bytes [i] << (i * 8)));
+    //for (int i = offset; i < n; i++) out += ((bytes [i] << ((i - offset) * 8)));
+    for (int i = offset; i < n; i++) out += (bytes [i] << ((n - i - 1) * 8));
+    
+    //if (out & ((n - offset) * 8) == 1) out -= ((n - offset) * 8);
     return out;
 }
 
 // or long?
-int convertToSignedOperand (int operand) {
-    return (operand & 0x20) == 0x20 ? (operand & 0x1F) - 32
-                                     : (operand & 0x1F);
+int condConvertToSignedOperand (int operand, int bits) {
+    int c = 1 << (bits - 1);
+    return (operand & c) == c ? operand - (c * 2) : operand;
 }
 
 /*
@@ -169,85 +174,42 @@ void executeCol (state *s, int c) {
     colour (s->disp, c);
 }
 
-// decides what method to execute based on the given instruction
-/*void interpretInstr (state *s, unsigned char instruction) {
-    char len = extractExtraLength (instruction);
-    OPCODE opcode = extractOpcode (instruction);
-
-    switch (opcode) {
-        case DX:
-            //printf ("Moved pen to x=%d; (%d, %d) -> (%d, %d)\n", s->x, s->prevX, s->prevY, s->x, s->y);
-            executeDx (s, instruction);
-            break;
-        case DY:
-            //printf ("Moved pen to y=%d; (%d, %d) -> (%d, %d)\n", s->y, s->prevX, s->prevY, s->x, s->y);
-            executeDy (s, instruction);
-            break;
-        case DT:
-            executeDt (s, instruction);
-            break;
-        case PEN:
-            //printf ("Changed pen status to x=%d\n", s->penDown);
-            executePen (s);
-            break;
-        default:
-            printf ("Invalid instruction!\n");
-            break;
+long getOperand (OPCODE opcode, unsigned char *bytes, int n) {
+    long operand = 0;
+    if (n == 1) {
+        operand = extractUnsignedOperand (bytes [0]);
+        if (opcode == DX || opcode == DY)
+            operand = condConvertToSignedOperand (operand, 6);
+    } else if (n > 1) {
+        operand = packBytes (bytes, n, 1);
+        operand = condConvertToSignedOperand (operand, 8 * (n - 1));        
     }
-}*/
+    return operand;
+}
 
 // n = no. bytes
 // (1 == not extended)
+// 0 = ext, but no operand
 void interpretBytes (state *s, unsigned char *bytes, int n) {
     unsigned char instruction = bytes [0];
     OPCODE opcode = extractOpcode (instruction);
-    /*long operand = n == 1 ? (opcode == (DX || DY)
-                                ? extractSignedOperand (bytes [0])
-                                : extractUnsignedOperand (bytes [0]))
-                          : packBytes (bytes, n);*/
-    long operand = (opcode == DX || opcode == DY) ? extractSignedOperand (bytes [0])
-                                        : extractUnsignedOperand (bytes [0]);
-    /*if (n != 1) {
-        operand = packBytes (bytes, n);
-        printf ("PACKED BYTES | EXTRA %d\n", n);
-    }*/
+    long operand = getOperand (opcode, bytes, n);
 
-    for (int i = 1; i < n; i++) {
-        //printf ("%d", bytes [n]);
-    }
-
-    printf ("OPCODE %d \n", opcode);
-
-    // start debug
-    int x = s->x; int y = s->y;
-    // end debug
     switch (opcode) {
         case DX:
-            // signed
-            executeDx (s, operand);
-            printf ("Moved pen by x=%d; (%d, %d) -> (%d, %d)\n", operand, x, y, s->x, s->y);
-            break;
+            executeDx (s, operand); break;
         case DY:
-            // signed
-            executeDy (s, operand);
-            printf ("Moved pen by y=%d; (%d, %d) -> (%d, %d)\n", operand, x, y, s->x, s->y);
-            break;
+            executeDy (s, operand); break;
         case DT:
-            // unsigned * 10
-            executeDt (s, operand * 10);
-            break;
+            executeDt (s, operand * 10); break;
         case PEN:
-            executePen (s);
-            break;
+            executePen (s); break;
         case CLEAR:
-            executeClear (s);
-            break;
+            executeClear (s); break;
         case KEY:
-            executeKey (s);
-            break;
+            executeKey (s); break;
         case COL:
-            executeCol (s, operand);
-            break;
+            executeCol (s, operand); break;
         default:
             printf ("Invalid instruction!\n");
             break;
@@ -260,8 +222,10 @@ void interpretInstrSet (state *s, instructionSet *set) {
 
     for (int i = 0; i < set->n; i++){
         unsigned char instruction = set->instructions [i];
+        char len = extractExtraLength (instruction);
         char noBytes = usesExtendedMode (instruction)
-                    ? (extractExtraLength (instruction) + 1) : 1;
+                    ? (len == 0 ? 0 : len + 1) : 1;
+                    //? extractExtraLength (instruction) : 1;
 
         bytes [0] = instruction;
 
@@ -330,11 +294,18 @@ void testReadFile () {
 
 void testPack () {
     unsigned char ex1 [] = {0x4C, 0xFF, 0x58};
-    assert (packBytes (ex1, 3) == 0x58FF4C);
+    assert (packBytes (ex1, 3, 0) == 0x4CFF58);
     unsigned char ex2 [] = {0xFF, 0xFF, 0xFF};
-    assert (packBytes (ex2, 3) == 0xFFFFFF);
+    assert (packBytes (ex2, 3, 0) == 0xFFFFFF);
     unsigned char ex3 [] = {0x3};
-    assert (packBytes (ex3, 1) == 0x3);
+    assert (packBytes (ex3, 1, 0) == 0x3);
+    unsigned char ex4 [] = {0x3F, 0x41, 0xE7};
+    assert (packBytes (ex4, 3, 1) == 0x41E7);
+
+    unsigned char ex5 [] = {0xCE, 0x60};
+    assert (packBytes (ex5, 2, 0) == 0xCE60);
+    assert (condConvertToSignedOperand (
+            packBytes (ex5, 2, 0), 16) == -12704);
 }
 
 void test () {
@@ -376,11 +347,11 @@ int main (int n, char *varg[n]) {
         testFile ("diag.sketch");
         testFile ("cross.sketch");
 
-        //testFile ("clear.sketch");
-        //testFile ("field.sketch");
-        //testFile ("key.sketch");
-        //testFile ("field.sketch");
-        //testFile ("pauses.sketch");
+        testFile ("clear.sketch");
+        testFile ("key.sketch");
+        testFile ("lawn.sketch");
+        testFile ("field.sketch");
+        testFile ("pauses.sketch");
     }
 
     return 1;
